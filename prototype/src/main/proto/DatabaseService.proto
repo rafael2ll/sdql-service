@@ -1,0 +1,50 @@
+syntax = "proto3";
+option java_multiple_files = true;
+package sd.nosql.prototype;
+
+
+enum ResultType{
+  SUCCESS = 0;
+  ERROR = 1;
+  ERROR_NE = 2;
+  ERROR_WV = 3;
+}
+
+message Key{
+  int64 key = 1 ;
+}
+message Version{
+  int64 key = 1;
+  int32 version = 2;
+}
+
+message Record {
+  int32 version = 1;
+  int64 timestamp = 2;
+  bytes data = 3;
+}
+
+message RecordInput{
+  int64 key = 1;
+  Record record = 2;
+}
+
+message RecordResult{
+  ResultType resultType = 1;
+  Record record = 2;
+}
+
+message RecordUpdate{
+  int64 key = 1;
+  int32 oldVersion = 2;
+  Record record = 3;
+
+}
+
+service DatabaseService {
+  rpc set(RecordInput) returns (RecordResult);
+  rpc get(Key) returns (RecordResult);
+  rpc del(Key) returns (RecordResult);
+  rpc delVersion(Version) returns (RecordResult);
+  rpc testAndSet(RecordUpdate) returns (RecordResult);
+}
