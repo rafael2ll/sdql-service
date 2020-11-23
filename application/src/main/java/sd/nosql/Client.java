@@ -27,7 +27,7 @@ public class Client {
                 .setKey(1606078612219L)
                 .setRecord(Record.newBuilder()
                         .setTimestamp(System.currentTimeMillis())
-                        .setData(ByteString.copyFrom("{\"message\": \" We wont find ourself until we're lost\"}", StandardCharsets.UTF_8))
+                        .setData(ByteString.copyFrom("{\"message\": \" Some message\"}", StandardCharsets.UTF_8))
                         .build())
                 .build());
 
@@ -37,12 +37,12 @@ public class Client {
                         .setKey(1606078612219L)
                         .setRecord(Record.newBuilder()
                                 .setTimestamp(System.currentTimeMillis())
-                                .setData(ByteString.copyFrom("{\"message\": \" We wont find ourself until we're lost\"}", StandardCharsets.UTF_8))
+                                .setData(ByteString.copyFrom("{\"message\": \" Some message\"}", StandardCharsets.UTF_8))
                                 .build())
                         .build());
 
-        logger.info("Some: {}", resultUpdate);
-        logger.info("Record: {}", stub.get(Key.newBuilder().setKey(1606078612219L).build()));
+        logger.info("Updated Result: {}", resultUpdate);
+        logger.info("Current Record: {}", stub.get(Key.newBuilder().setKey(1606078612219L).build()));
         channel.shutdown();
     }
 }

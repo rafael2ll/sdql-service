@@ -43,7 +43,7 @@ public class ServerTest {
                     .setKey(number)
                     .setRecord(Record.newBuilder()
                             .setTimestamp(System.currentTimeMillis())
-                            .setData(ByteString.copyFrom(String.format("{\"message\": \" We wont find ourself until we're lost\", \"time\": %d }", number), StandardCharsets.UTF_8))
+                            .setData(ByteString.copyFrom(String.format("{\"message\": \" To every dream that I left behind....counting\", \"time\": %d }", number), StandardCharsets.UTF_8))
                             .build())
                     .build());
             client.upCount();
@@ -59,7 +59,7 @@ public class ServerTest {
                     .setKey(number)
                     .setRecord(Record.newBuilder()
                             .setTimestamp(System.currentTimeMillis())
-                            .setData(ByteString.copyFrom(String.format("{\"message\": \" We wont find ourself until we're lost\", \"time\": %d }", number), StandardCharsets.UTF_8))
+                            .setData(ByteString.copyFrom(String.format("{\"message\": \" To every dream that I left behind....counting\", \"time\": %d }", number), StandardCharsets.UTF_8))
                             .build())
                     .build());
             assert resultInsert.getResultType().equals(ResultType.ERROR);
