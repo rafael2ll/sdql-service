@@ -7,6 +7,7 @@ import sd.nosql.prototype.Record;
 import sd.nosql.prototype.*;
 import sd.nosql.prototype.enums.Operation;
 import sd.nosql.prototype.request.QueueRequest;
+import sd.nosql.prototype.service.QueueService;
 
 import java.util.Map;
 import java.util.Optional;
@@ -14,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
-    private final QueueServiceImpl queueService = new QueueServiceImpl(); // TODO: Call abstraction instead
+    private final QueueService queueService = new QueueServiceImpl();
     Map<Long, Record> database = new ConcurrentHashMap<>();
 
     @Override
@@ -37,7 +38,6 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
             }
             responseObserver.onCompleted();
         } catch (Exception e) {
-            // TODO: Error recovery
             logger.error("Error executing set::{}", request, e);
             if (canAttemptAgain(times)) { set(request, responseObserver); }
         }
@@ -76,7 +76,6 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
             }
             responseObserver.onCompleted();
         } catch (Exception e) {
-            // TODO: Error recovery
             logger.error("Error executing del::{}", request, e);
             if (canAttemptAgain(times)) { del(request, responseObserver); }
         }
@@ -99,7 +98,6 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
                             .build());
                 }
             } catch (Exception e) {
-                // TODO: Error recovery
                 logger.error("Error executing delVersion::{}", request, e);
                 if (canAttemptAgain(times)) { delVersion(request, responseObserver); }
             }
@@ -130,7 +128,6 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
                             .build());
                 }
             } catch (Exception e) {
-                // TODO: Error recovery
                 logger.error("Error executing testAndSet::{}", request, e);
                 if (canAttemptAgain(times)) { testAndSet(request, responseObserver); }
             }
@@ -145,5 +142,4 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
         times++;
         return times <= 4;
     }
-
 }

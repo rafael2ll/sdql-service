@@ -3,6 +3,7 @@ package sd.nosql.prototype.service.impl;
 import sd.nosql.prototype.Record;
 import sd.nosql.prototype.enums.Operation;
 import sd.nosql.prototype.request.QueueRequest;
+import sd.nosql.prototype.service.PersistenceService;
 import sd.nosql.prototype.service.QueueService;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -11,9 +12,8 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 public class QueueServiceImpl implements QueueService {
-    // TODO: Call the abstraction instead of impl
     private Semaphore semaphore = new Semaphore(1, true);
-    private FilePersistenceServiceImpl filePersistenceService = new FilePersistenceServiceImpl();
+    private PersistenceService persistenceService = new FilePersistenceServiceImpl();
     private LinkedBlockingQueue<QueueRequest> queue = new LinkedBlockingQueue<>();
 
     @Override
@@ -28,12 +28,12 @@ public class QueueServiceImpl implements QueueService {
     public void consumeAll() throws InterruptedException {
         if (enterCriticalZone()) {
             try {
-                ConcurrentHashMap<Long, Record> database = filePersistenceService.read();
+                ConcurrentHashMap<Long, Record> database = persistenceService.read();
                 while(!queue.isEmpty()) {
                     QueueRequest request = queue.remove();
                     consumeRequest(request, database);
                 }
-                filePersistenceService.write(database);
+                persistenceService.write(database);
             } finally {
                 leaveCriticalZone();
             }
