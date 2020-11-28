@@ -9,14 +9,17 @@ import sd.nosql.prototype.enums.Operation;
 import sd.nosql.prototype.request.QueueRequest;
 import sd.nosql.prototype.service.QueueService;
 
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
     private final QueueService queueService = new QueueServiceImpl();
     Map<Long, Record> database = new ConcurrentHashMap<>();
+
+    public DatabaseServiceImpl(int persistenceTimeInMs) {
+        queueService.scheduleConsumer(persistenceTimeInMs);
+    }
 
     @Override
     public void set(RecordInput request, StreamObserver<RecordResult> responseObserver) {

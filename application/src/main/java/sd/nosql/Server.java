@@ -14,7 +14,7 @@ public class Server {
         logger.info("Starting server...");
         io.grpc.Server server = ServerBuilder
                 .forPort(8080)
-                .addService(new DatabaseServiceImpl()).build();
+                .addService(new DatabaseServiceImpl(3000)).build();
         server.start();
         server.awaitTermination();
     }
