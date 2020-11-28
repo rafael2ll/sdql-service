@@ -5,6 +5,8 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import sd.nosql.prototype.Record;
 import sd.nosql.prototype.*;
+import sd.nosql.prototype.enums.Operation;
+import sd.nosql.prototype.request.QueueRequest;
 
 import java.util.Map;
 import java.util.Optional;
@@ -12,17 +14,19 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
-
+    private final QueueServiceImpl queueService = new QueueServiceImpl(); // TODO: Call abstraction instead
     Map<Long, Record> database = new ConcurrentHashMap<>();
 
     @Override
     public void set(RecordInput request, StreamObserver<RecordResult> responseObserver) {
         logger.info("set::{}", request);
         if (!database.containsKey(request.getKey())) {
-            database.put(request.getKey(), request.getRecord().toBuilder().setVersion(1).build());
+            Record record = request.getRecord().toBuilder().setVersion(1).build();
+            database.put(request.getKey(), record);
             responseObserver.onNext(RecordResult.newBuilder()
                     .setResultType(ResultType.SUCCESS)
                     .build());
+            queueService.produce(new QueueRequest(Operation.SET, request.getKey(), record));
         } else {
             responseObserver.onNext(RecordResult.newBuilder()
                     .setResultType(ResultType.ERROR)
@@ -45,23 +49,23 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
                     .build());
         }
         responseObserver.onCompleted();
-
     }
 
     @Override
     public void del(Key request, StreamObserver<RecordResult> responseObserver) {
         if (database.containsKey(request.getKey())) {
+            Record record = database.remove(request.getKey());
             responseObserver.onNext(RecordResult.newBuilder()
                     .setResultType(ResultType.SUCCESS)
-                    .setRecord(database.remove(request.getKey()))
+                    .setRecord(record)
                     .build());
+            queueService.produce(new QueueRequest(Operation.DEL, request.getKey(), record));
         } else {
             responseObserver.onNext(RecordResult.newBuilder()
                     .setResultType(ResultType.ERROR)
                     .build());
         }
         responseObserver.onCompleted();
-
     }
 
     @Override
@@ -72,6 +76,7 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
                         .setResultType(ResultType.SUCCESS)
                         .setRecord(record)
                         .build());
+                queueService.produce(new QueueRequest(Operation.DEL_VERSION, request.getKey(), record));
             } else {
                 responseObserver.onNext(RecordResult.newBuilder()
                         .setResultType(ResultType.ERROR_WV)
@@ -94,6 +99,7 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
                         .setResultType(ResultType.SUCCESS)
                         .setRecord(record)
                         .build());
+                queueService.produce(new QueueRequest(Operation.TEST_SET, request.getKey(), record));
             } else {
                 responseObserver.onNext(RecordResult.newBuilder()
                         .setResultType(ResultType.ERROR_WV)
