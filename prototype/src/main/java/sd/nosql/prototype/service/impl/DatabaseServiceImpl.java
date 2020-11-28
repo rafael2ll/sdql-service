@@ -19,21 +19,28 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
 
     @Override
     public void set(RecordInput request, StreamObserver<RecordResult> responseObserver) {
-        logger.info("set::{}", request);
-        if (!database.containsKey(request.getKey())) {
-            Record record = request.getRecord().toBuilder().setVersion(1).build();
-            database.put(request.getKey(), record);
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.SUCCESS)
-                    .build());
-            queueService.produce(new QueueRequest(Operation.SET, request.getKey(), record));
-        } else {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.ERROR)
-                    .setRecord(database.get(request.getKey()))
-                    .build());
+        int times = 0;
+        try {
+            logger.info("set::{}", request);
+            if (!database.containsKey(request.getKey())) {
+                Record record = request.getRecord().toBuilder().setVersion(1).build();
+                database.put(request.getKey(), record);
+                responseObserver.onNext(RecordResult.newBuilder()
+                        .setResultType(ResultType.SUCCESS)
+                        .build());
+                queueService.produce(new QueueRequest(Operation.SET, request.getKey(), record));
+            } else {
+                responseObserver.onNext(RecordResult.newBuilder()
+                        .setResultType(ResultType.ERROR)
+                        .setRecord(database.get(request.getKey()))
+                        .build());
+            }
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            // TODO: Error recovery
+            logger.error("Error executing set::{}", request, e);
+            if (canAttemptAgain(times)) { set(request, responseObserver); }
         }
-        responseObserver.onCompleted();
     }
 
     @Override
@@ -53,34 +60,48 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
 
     @Override
     public void del(Key request, StreamObserver<RecordResult> responseObserver) {
-        if (database.containsKey(request.getKey())) {
-            Record record = database.remove(request.getKey());
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.SUCCESS)
-                    .setRecord(record)
-                    .build());
-            queueService.produce(new QueueRequest(Operation.DEL, request.getKey(), record));
-        } else {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.ERROR)
-                    .build());
-        }
-        responseObserver.onCompleted();
-    }
-
-    @Override
-    public void delVersion(Version request, StreamObserver<RecordResult> responseObserver) {
-        Optional.ofNullable(database.getOrDefault(request.getKey(), null)).ifPresentOrElse(record -> {
-            if (record.getVersion() == request.getVersion()) {
+        int times = 0;
+        try {
+            if (database.containsKey(request.getKey())) {
+                Record record = database.remove(request.getKey());
                 responseObserver.onNext(RecordResult.newBuilder()
                         .setResultType(ResultType.SUCCESS)
                         .setRecord(record)
                         .build());
-                queueService.produce(new QueueRequest(Operation.DEL_VERSION, request.getKey(), record));
+                queueService.produce(new QueueRequest(Operation.DEL, request.getKey(), record));
             } else {
                 responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_WV)
+                        .setResultType(ResultType.ERROR)
                         .build());
+            }
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            // TODO: Error recovery
+            logger.error("Error executing del::{}", request, e);
+            if (canAttemptAgain(times)) { del(request, responseObserver); }
+        }
+    }
+
+    @Override
+    public void delVersion(Version request, StreamObserver<RecordResult> responseObserver) {
+        int times = 0;
+        Optional.ofNullable(database.getOrDefault(request.getKey(), null)).ifPresentOrElse(record -> {
+            try {
+                if (record.getVersion() == request.getVersion()) {
+                    responseObserver.onNext(RecordResult.newBuilder()
+                            .setResultType(ResultType.SUCCESS)
+                            .setRecord(record)
+                            .build());
+                    queueService.produce(new QueueRequest(Operation.DEL_VERSION, request.getKey(), record));
+                } else {
+                    responseObserver.onNext(RecordResult.newBuilder()
+                            .setResultType(ResultType.ERROR_WV)
+                            .build());
+                }
+            } catch (Exception e) {
+                // TODO: Error recovery
+                logger.error("Error executing delVersion::{}", request, e);
+                if (canAttemptAgain(times)) { delVersion(request, responseObserver); }
             }
         }, () ->
                 responseObserver.onNext(RecordResult.newBuilder()
@@ -92,25 +113,37 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
 
     @Override
     public void testAndSet(RecordUpdate request, StreamObserver<RecordResult> responseObserver) {
+        int times = 0;
         Optional.ofNullable(database.getOrDefault(request.getKey(), null)).ifPresentOrElse(record -> {
-            if (record.getVersion() == request.getOldVersion()) {
-                database.replace(request.getKey(), request.getRecord().toBuilder().setVersion(record.getVersion() + 1).build());
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.SUCCESS)
-                        .setRecord(record)
-                        .build());
-                queueService.produce(new QueueRequest(Operation.TEST_SET, request.getKey(), record));
-            } else {
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_WV)
-                        .setRecord(record)
-                        .build());
+            try {
+                if (record.getVersion() == request.getOldVersion()) {
+                    database.replace(request.getKey(), request.getRecord().toBuilder().setVersion(record.getVersion() + 1).build());
+                    responseObserver.onNext(RecordResult.newBuilder()
+                            .setResultType(ResultType.SUCCESS)
+                            .setRecord(record)
+                            .build());
+                    queueService.produce(new QueueRequest(Operation.TEST_SET, request.getKey(), record));
+                } else {
+                    responseObserver.onNext(RecordResult.newBuilder()
+                            .setResultType(ResultType.ERROR_WV)
+                            .setRecord(record)
+                            .build());
+                }
+            } catch (Exception e) {
+                // TODO: Error recovery
+                logger.error("Error executing testAndSet::{}", request, e);
+                if (canAttemptAgain(times)) { testAndSet(request, responseObserver); }
             }
         }, () ->
                 responseObserver.onNext(RecordResult.newBuilder()
                         .setResultType(ResultType.ERROR_NE)
                         .build()));
         responseObserver.onCompleted();
+    }
+
+    private boolean canAttemptAgain(int times) {
+        times++;
+        return times <= 4;
     }
 
 }
