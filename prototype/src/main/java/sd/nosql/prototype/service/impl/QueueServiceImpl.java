@@ -19,28 +19,24 @@ public class QueueServiceImpl implements QueueService {
     @Override
     public void produce(QueueRequest request) throws InterruptedException {
         if (enterCriticalZone()) {
-            queue.add(request);
-            leaveCriticalZone();
+            try { queue.add(request); }
+            finally { leaveCriticalZone(); }
         }
     }
 
     @Override
     public void consumeAll() throws InterruptedException {
         if (enterCriticalZone()) {
-            ConcurrentHashMap<Long, Record> database = filePersistenceService.read();
-            while(!queue.isEmpty()) {
-                QueueRequest request = queue.remove();
-                Operation operation = request.getOperation();
-                Long key = request.getKey();
-                if (operation == Operation.SET || operation == Operation.TEST_SET) {
-                    Record record = request.getRecord();
-                    database.put(key, record);
-                } else if (operation == Operation.DEL || operation == Operation.DEL_VERSION) {
-                    database.remove(key);
+            try {
+                ConcurrentHashMap<Long, Record> database = filePersistenceService.read();
+                while(!queue.isEmpty()) {
+                    QueueRequest request = queue.remove();
+                    consumeRequest(request, database);
                 }
+                filePersistenceService.write(database);
+            } finally {
+                leaveCriticalZone();
             }
-            filePersistenceService.write(database);
-            leaveCriticalZone();
         }
     }
 
@@ -50,5 +46,16 @@ public class QueueServiceImpl implements QueueService {
 
     private void leaveCriticalZone() {
         semaphore.release();
+    }
+
+    private void consumeRequest(QueueRequest request, ConcurrentHashMap<Long, Record> database) {
+        Operation operation = request.getOperation();
+        Long key = request.getKey();
+        if (operation == Operation.SET || operation == Operation.TEST_SET) {
+            Record record = request.getRecord();
+            database.put(key, record);
+        } else if (operation == Operation.DEL || operation == Operation.DEL_VERSION) {
+            database.remove(key);
+        }
     }
 }

@@ -1,5 +1,7 @@
 package sd.nosql.prototype.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sd.nosql.prototype.Record;
 import sd.nosql.prototype.service.PersistenceService;
 
@@ -7,6 +9,7 @@ import java.io.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class FilePersistenceServiceImpl implements PersistenceService {
+    private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
     private String path = "/home/bianca/Documentos/UFU/SD/teste/database";
 
     @Override
@@ -14,7 +17,6 @@ public class FilePersistenceServiceImpl implements PersistenceService {
         try {
             File fileToRead = new File(path);
             if (fileToRead.length() == 0) {
-                // Check if database was already saved (improve)
                 return new ConcurrentHashMap<Long, Record>();
             } else {
                 FileInputStream fileInputStream = new FileInputStream(fileToRead);
@@ -22,8 +24,7 @@ public class FilePersistenceServiceImpl implements PersistenceService {
                 return (ConcurrentHashMap<Long, Record>)objectInputStream.readObject();
             }
         } catch (Exception e) {
-            System.out.println("Read error");
-            e.printStackTrace();
+            logger.error("Read database error", e);
             return null;
         }
     }
@@ -39,8 +40,7 @@ public class FilePersistenceServiceImpl implements PersistenceService {
             objectOutputStream.close();
             fileOutputStream.close();
         } catch (Exception e) {
-            System.out.println("Write error");
-            e.printStackTrace();
+            logger.error("Write database error", e);
         }
     }
 }
