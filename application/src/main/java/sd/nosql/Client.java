@@ -13,7 +13,6 @@ import sd.nosql.prototype.*;
 
 import java.nio.charset.StandardCharsets;
 
-
 public class Client {
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
 
