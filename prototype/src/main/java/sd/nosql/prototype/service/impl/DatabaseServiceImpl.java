@@ -7,110 +7,129 @@ import sd.nosql.prototype.Record;
 import sd.nosql.prototype.*;
 import sd.nosql.prototype.enums.Operation;
 import sd.nosql.prototype.request.QueueRequest;
+import sd.nosql.prototype.service.QueueService;
 
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImplBase {
     private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
-    private final QueueServiceImpl queueService = new QueueServiceImpl(); // TODO: Call abstraction instead
+    private final QueueService queueService = new QueueServiceImpl();
     Map<Long, Record> database = new ConcurrentHashMap<>();
+
+    public DatabaseServiceImpl(int persistenceTimeInMs) {
+        queueService.scheduleConsumer(persistenceTimeInMs);
+    }
 
     @Override
     public void set(RecordInput request, StreamObserver<RecordResult> responseObserver) {
-        logger.info("set::{}", request);
-        if (!database.containsKey(request.getKey())) {
-            Record record = request.getRecord().toBuilder().setVersion(1).build();
-            database.put(request.getKey(), record);
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.SUCCESS)
-                    .build());
-            queueService.produce(new QueueRequest(Operation.SET, request.getKey(), record));
-        } else {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.ERROR)
-                    .setRecord(database.get(request.getKey()))
-                    .build());
+        int times = 0;
+        try {
+            logger.info("set::{}", request);
+            if (!database.containsKey(request.getKey())) {
+                Record record = request.getRecord().toBuilder().setVersion(1).build();
+                database.put(request.getKey(), record);
+                setResponse(responseObserver, ResultType.SUCCESS, null);
+                queueService.produce(new QueueRequest(Operation.SET, request.getKey(), record));
+            } else {
+                Record record = database.get(request.getKey());
+                setResponse(responseObserver, ResultType.ERROR, record);
+            }
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            logger.error("Error executing set::{}", request, e);
+            if (canAttemptAgain(times)) { set(request, responseObserver); }
         }
-        responseObserver.onCompleted();
     }
 
     @Override
     public void get(Key request, StreamObserver<RecordResult> responseObserver) {
+        logger.info("get::{}", request);
         if (database.containsKey(request.getKey())) {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.SUCCESS)
-                    .setRecord(database.get(request.getKey()))
-                    .build());
+            Record record = database.get(request.getKey());
+            setResponse(responseObserver, ResultType.SUCCESS, record);
         } else {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.ERROR)
-                    .build());
+            setResponse(responseObserver, ResultType.ERROR, null);
         }
         responseObserver.onCompleted();
     }
 
     @Override
     public void del(Key request, StreamObserver<RecordResult> responseObserver) {
-        if (database.containsKey(request.getKey())) {
-            Record record = database.remove(request.getKey());
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.SUCCESS)
-                    .setRecord(record)
-                    .build());
-            queueService.produce(new QueueRequest(Operation.DEL, request.getKey(), record));
-        } else {
-            responseObserver.onNext(RecordResult.newBuilder()
-                    .setResultType(ResultType.ERROR)
-                    .build());
+        int times = 0;
+        try {
+            logger.info("del::{}", request);
+            if (database.containsKey(request.getKey())) {
+                Record record = database.remove(request.getKey());
+                setResponse(responseObserver, ResultType.SUCCESS, record);
+                queueService.produce(new QueueRequest(Operation.DEL, request.getKey(), record));
+            } else {
+                setResponse(responseObserver, ResultType.ERROR, null);
+            }
+            responseObserver.onCompleted();
+        } catch (Exception e) {
+            logger.error("Error executing del::{}", request, e);
+            if (canAttemptAgain(times)) { del(request, responseObserver); }
         }
-        responseObserver.onCompleted();
     }
 
     @Override
     public void delVersion(Version request, StreamObserver<RecordResult> responseObserver) {
+        int times = 0;
         Optional.ofNullable(database.getOrDefault(request.getKey(), null)).ifPresentOrElse(record -> {
-            if (record.getVersion() == request.getVersion()) {
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.SUCCESS)
-                        .setRecord(record)
-                        .build());
-                queueService.produce(new QueueRequest(Operation.DEL_VERSION, request.getKey(), record));
-            } else {
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_WV)
-                        .build());
+            try {
+                logger.info("delVersion::{}", request);
+                if (record.getVersion() == request.getVersion()) {
+                    setResponse(responseObserver, ResultType.SUCCESS, record);
+                    queueService.produce(new QueueRequest(Operation.DEL_VERSION, request.getKey(), record));
+                } else {
+                    setResponse(responseObserver, ResultType.ERROR_WV, record);
+                }
+            } catch (Exception e) {
+                logger.error("Error executing delVersion::{}", request, e);
+                if (canAttemptAgain(times)) { delVersion(request, responseObserver); }
             }
-        }, () ->
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_NE)
-                        .build()));
+        }, () -> setResponse(responseObserver, ResultType.ERROR_NE, null));
         responseObserver.onCompleted();
-
     }
 
     @Override
     public void testAndSet(RecordUpdate request, StreamObserver<RecordResult> responseObserver) {
+        int times = 0;
         Optional.ofNullable(database.getOrDefault(request.getKey(), null)).ifPresentOrElse(record -> {
-            if (record.getVersion() == request.getOldVersion()) {
-                database.replace(request.getKey(), request.getRecord().toBuilder().setVersion(record.getVersion() + 1).build());
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.SUCCESS)
-                        .setRecord(record)
-                        .build());
-                queueService.produce(new QueueRequest(Operation.TEST_SET, request.getKey(), record));
-            } else {
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_WV)
-                        .setRecord(record)
-                        .build());
+            try {
+                logger.info("testAndSet::{}", request);
+                if (record.getVersion() == request.getOldVersion()) {
+                    Record newRecord = request.getRecord().toBuilder().setVersion(record.getVersion() + 1).build();
+                    database.replace(request.getKey(), newRecord);
+                    setResponse(responseObserver, ResultType.SUCCESS, record);
+                    queueService.produce(new QueueRequest(Operation.TEST_SET, request.getKey(), record));
+                } else {
+                    setResponse(responseObserver, ResultType.ERROR_WV, record);
+                }
+            } catch (Exception e) {
+                logger.error("Error executing testAndSet::{}", request, e);
+                if (canAttemptAgain(times)) { testAndSet(request, responseObserver); }
             }
-        }, () ->
-                responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(ResultType.ERROR_NE)
-                        .build()));
+        }, () -> setResponse(responseObserver, ResultType.ERROR_NE, null));
         responseObserver.onCompleted();
     }
 
+    private void setResponse(StreamObserver<RecordResult> responseObserver, ResultType resultType, Record record) {
+        if (record == null) {
+            responseObserver.onNext(RecordResult.newBuilder()
+                    .setResultType(resultType)
+                    .build());
+        } else {
+            responseObserver.onNext(RecordResult.newBuilder()
+                    .setResultType(resultType)
+                    .setRecord(record)
+                    .build());
+        }
+    }
+
+    private boolean canAttemptAgain(int times) {
+        times++;
+        return times <= 4;
+    }
 }
