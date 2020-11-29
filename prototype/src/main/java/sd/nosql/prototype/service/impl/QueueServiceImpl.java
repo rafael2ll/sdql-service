@@ -17,31 +17,34 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 public class QueueServiceImpl implements QueueService {
+    private static final int TIMEOUT = 10;
     private static final Logger logger = LoggerFactory.getLogger(DatabaseServiceImpl.class);
-    private Semaphore semaphore = new Semaphore(1, true);
+    private Semaphore firstSemaphore = new Semaphore(1, true);
+    private Semaphore secondSemaphore = new Semaphore(1, true);
     private PersistenceService persistenceService = new FilePersistenceServiceImpl();
-    private LinkedBlockingQueue<QueueRequest> queue = new LinkedBlockingQueue<>();
+    private LinkedBlockingQueue<QueueRequest> firstQueue = new LinkedBlockingQueue<>();
+    private LinkedBlockingQueue<QueueRequest> secondQueue = new LinkedBlockingQueue<>();
 
     @Override
     public void produce(QueueRequest request) throws InterruptedException {
-        if (enterCriticalZone()) {
-            try { queue.add(request); }
-            finally { leaveCriticalZone(); }
+        if (enterFirstCriticalZone()) {
+            try { firstQueue.add(request); }
+            finally { leaveFirstCriticalZone(); }
+        } else if (enterSecondCriticalZone()) {
+            try { secondQueue.add(request); }
+            finally { leaveSecondCriticalZone(); }
         }
     }
 
     @Override
     public void consumeAll() throws InterruptedException {
-        if (enterCriticalZone()) {
+        if (enterFirstCriticalZone()) {
             try {
-                ConcurrentHashMap<Long, Record> database = persistenceService.read();
-                while(!queue.isEmpty()) {
-                    QueueRequest request = queue.remove();
-                    consumeRequest(request, database);
-                }
-                persistenceService.write(database);
+                copyToDisk();
+                if (enterSecondCriticalZone()) { copyFromSecondQueue(); }
             } finally {
-                leaveCriticalZone();
+                leaveFirstCriticalZone();
+                leaveSecondCriticalZone();
             }
         }
     }
@@ -64,12 +67,36 @@ public class QueueServiceImpl implements QueueService {
         timer.schedule(timerTask, new Date(), persistenceTimeInMs);
     }
 
-    private boolean enterCriticalZone() throws InterruptedException {
-        return semaphore.tryAcquire(10, TimeUnit.SECONDS);
+    private boolean enterFirstCriticalZone() throws InterruptedException {
+        return firstSemaphore.tryAcquire(TIMEOUT, TimeUnit.SECONDS);
     }
 
-    private void leaveCriticalZone() {
-        semaphore.release();
+    private boolean enterSecondCriticalZone() throws InterruptedException {
+        return secondSemaphore.tryAcquire(TIMEOUT, TimeUnit.SECONDS);
+    }
+
+    private void leaveFirstCriticalZone() {
+        firstSemaphore.release();
+    }
+
+    private void leaveSecondCriticalZone() {
+        secondSemaphore.release();
+    }
+
+    private void copyToDisk() {
+        ConcurrentHashMap<Long, Record> database = persistenceService.read();
+        while(!firstQueue.isEmpty()) {
+            QueueRequest request = firstQueue.remove();
+            consumeRequest(request, database);
+        }
+        persistenceService.write(database);
+    }
+
+    private void copyFromSecondQueue() {
+        while(!secondQueue.isEmpty()) {
+            QueueRequest request = secondQueue.remove();
+            firstQueue.add(request);
+        }
     }
 
     private void consumeRequest(QueueRequest request, ConcurrentHashMap<Long, Record> database) {
