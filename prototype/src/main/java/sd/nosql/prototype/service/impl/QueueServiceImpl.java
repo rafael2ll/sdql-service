@@ -35,11 +35,9 @@ public class QueueServiceImpl implements QueueService {
 
     @Override
     public void consumeAll() throws InterruptedException {
-        ConcurrentHashMap<Long, Record> database = persistenceService.read();
-        copyToDisk(secondQueue, secondSemaphore, database);
-        copyToDisk(firstQueue, firstSemaphore, database);
+        copyToDisk(secondQueue, secondSemaphore);
+        copyToDisk(firstQueue, firstSemaphore);
         copyFromSecondQueue();
-        persistenceService.write(database);
     }
 
     private boolean enterCriticalZone(Semaphore semaphore) throws InterruptedException {
@@ -50,15 +48,16 @@ public class QueueServiceImpl implements QueueService {
         semaphore.release();
     }
 
-    private void copyToDisk(LinkedBlockingQueue<QueueRequest> queue, Semaphore semaphore,
-                            ConcurrentHashMap<Long, Record> database) throws InterruptedException {
+    private void copyToDisk(LinkedBlockingQueue<QueueRequest> queue, Semaphore semaphore) throws InterruptedException {
         if (enterCriticalZone(semaphore)) {
+            ConcurrentHashMap<Long, Record> database = persistenceService.read();
             try {
                 while(!queue.isEmpty()) {
                     QueueRequest request = queue.remove();
                     consumeRequest(request, database);
                 }
             } finally {
+                persistenceService.write(database);
                 leaveCriticalZone(semaphore);
             }
         } else {
