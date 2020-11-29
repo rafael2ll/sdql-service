@@ -116,10 +116,16 @@ public class DatabaseServiceImpl extends DatabaseServiceGrpc.DatabaseServiceImpl
     }
 
     private void setResponse(StreamObserver<RecordResult> responseObserver, ResultType resultType, Record record) {
-        responseObserver.onNext(RecordResult.newBuilder()
-                        .setResultType(resultType)
-                        .setRecord(record)
-                        .build());
+        if (record == null) {
+            responseObserver.onNext(RecordResult.newBuilder()
+                    .setResultType(resultType)
+                    .build());
+        } else {
+            responseObserver.onNext(RecordResult.newBuilder()
+                    .setResultType(resultType)
+                    .setRecord(record)
+                    .build());
+        }
     }
 
     private boolean canAttemptAgain(int times) {

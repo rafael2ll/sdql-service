@@ -29,7 +29,7 @@ public class QueueServiceImpl implements QueueService {
             try { secondQueue.add(request); }
             finally { leaveSecondCriticalZone(); }
         } else {
-            throw new QueueTimeoutException("Produce all timeout exception");
+            throw new QueueTimeoutException("Produce timeout exception");
         }
     }
 
