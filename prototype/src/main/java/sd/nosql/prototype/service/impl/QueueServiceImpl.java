@@ -2,6 +2,7 @@ package sd.nosql.prototype.service.impl;
 
 import sd.nosql.prototype.Record;
 import sd.nosql.prototype.enums.Operation;
+import sd.nosql.prototype.exception.QueueTimeoutException;
 import sd.nosql.prototype.request.QueueRequest;
 import sd.nosql.prototype.service.PersistenceService;
 import sd.nosql.prototype.service.QueueService;
@@ -27,6 +28,8 @@ public class QueueServiceImpl implements QueueService {
         } else if (enterSecondCriticalZone()) {
             try { secondQueue.add(request); }
             finally { leaveSecondCriticalZone(); }
+        } else {
+            throw new QueueTimeoutException("Produce all timeout exception");
         }
     }
 
@@ -40,6 +43,8 @@ public class QueueServiceImpl implements QueueService {
                 leaveFirstCriticalZone();
                 leaveSecondCriticalZone();
             }
+        } else {
+            throw new QueueTimeoutException("Consumer all timeout exception");
         }
     }
 
