@@ -11,7 +11,7 @@ import java.util.TimerTask;
 public interface QueueService {
     void produce(QueueRequest request) throws InterruptedException;
     void consumeAll() throws InterruptedException;
-
+    void setPersistenceService(PersistenceService persistenceService);
     default void scheduleConsumer(int persistenceTimeInMs) {
         final Logger logger = LoggerFactory.getLogger(QueueService.class);
         Timer timer = new Timer();

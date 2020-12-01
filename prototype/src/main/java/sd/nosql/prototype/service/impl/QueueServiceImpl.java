@@ -1,5 +1,7 @@
 package sd.nosql.prototype.service.impl;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import sd.nosql.prototype.Record;
 import sd.nosql.prototype.enums.Operation;
 import sd.nosql.prototype.exception.QueueTimeoutException;
@@ -13,21 +15,34 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 
 public class QueueServiceImpl implements QueueService {
+    private static final Logger logger = LoggerFactory.getLogger(QueueServiceImpl.class);
+
     private static final int TIMEOUT = 10;
-    private Semaphore firstSemaphore = new Semaphore(1, true);
-    private Semaphore secondSemaphore = new Semaphore(1, true);
+    private final Semaphore firstSemaphore = new Semaphore(1, true);
+    private final Semaphore secondSemaphore = new Semaphore(1, true);
     private PersistenceService persistenceService = new FilePersistenceServiceImpl();
-    private LinkedBlockingQueue<QueueRequest> firstQueue = new LinkedBlockingQueue<>();
-    private LinkedBlockingQueue<QueueRequest> secondQueue = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<QueueRequest> firstQueue = new LinkedBlockingQueue<>();
+    private final LinkedBlockingQueue<QueueRequest> secondQueue = new LinkedBlockingQueue<>();
+
+    @Override
+    public void setPersistenceService(PersistenceService persistenceService) {
+        this.persistenceService = persistenceService;
+    }
 
     @Override
     public void produce(QueueRequest request) throws InterruptedException {
         if (enterCriticalZone(firstSemaphore)) {
-            try { firstQueue.add(request); }
-            finally { leaveCriticalZone(firstSemaphore); }
+            try {
+                firstQueue.offer(request);
+            } finally {
+                leaveCriticalZone(firstSemaphore);
+            }
         } else if (enterCriticalZone(secondSemaphore)) {
-            try { secondQueue.add(request); }
-            finally { leaveCriticalZone(secondSemaphore); }
+            try {
+                secondQueue.offer(request);
+            } finally {
+                leaveCriticalZone(secondSemaphore);
+            }
         } else {
             throw new QueueTimeoutException("Produce timeout exception");
         }
@@ -37,7 +52,6 @@ public class QueueServiceImpl implements QueueService {
     public void consumeAll() throws InterruptedException {
         copyToDisk(secondQueue, secondSemaphore);
         copyToDisk(firstQueue, firstSemaphore);
-        copyFromSecondQueue();
     }
 
     private boolean enterCriticalZone(Semaphore semaphore) throws InterruptedException {
@@ -52,13 +66,14 @@ public class QueueServiceImpl implements QueueService {
         if (enterCriticalZone(semaphore)) {
             ConcurrentHashMap<Long, Record> database = persistenceService.read();
             try {
-                while(!queue.isEmpty()) {
+                while (!queue.isEmpty()) {
                     QueueRequest request = queue.remove();
                     consumeRequest(request, database);
                 }
             } finally {
                 persistenceService.write(database);
                 leaveCriticalZone(semaphore);
+                logger.info("Dumped database....");
             }
         } else {
             throw new QueueTimeoutException("Copy to disk timeout exception");
@@ -67,12 +82,13 @@ public class QueueServiceImpl implements QueueService {
 
     private void copyFromSecondQueue() throws InterruptedException {
         if (enterCriticalZone(secondSemaphore)) {
-            while(!secondQueue.isEmpty()) {
+            while (!secondQueue.isEmpty()) {
                 try {
                     QueueRequest request = secondQueue.remove();
                     firstQueue.add(request);
                 } finally {
                     leaveCriticalZone(secondSemaphore);
+                    logger.info("Queue re-synced");
                 }
             }
         } else {

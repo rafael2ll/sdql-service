@@ -97,6 +97,7 @@ public class ServerTest {
             }, MoreExecutors.directExecutor());
         });
         while (count.get() < 100000) {
+            logger.info("Count: {}", count.get());
             Thread.sleep(1000);
         }
     }
@@ -104,7 +105,14 @@ public class ServerTest {
     @Test
     void update_all_10000_in_sequence() {
         LongStream.range(0L, 100000L).parallel().forEach(number -> {
-            RecordResult result = blockingStub.get(Key.newBuilder().setKey(number).build());
+            RecordResult result = blockingStub.testAndSet(RecordUpdate.newBuilder()
+                    .setOldVersion(1)
+                    .setKey(number)
+                    .setRecord(Record.newBuilder()
+                            .setTimestamp(System.currentTimeMillis())
+                            .setData(ByteString.copyFrom(String.format("{\"message\": \" To every dream that I left behind new version....counting\", \"time\": %d }", number), StandardCharsets.UTF_8))
+                            .build())
+                    .build());
             assert result.getResultType().equals(ResultType.SUCCESS);
         });
     }
@@ -113,6 +121,7 @@ public class ServerTest {
     void read_all_10000_in_sequence() {
         LongStream.range(0L, 100000L).parallel().forEach(number -> {
             RecordResult result = blockingStub.get(Key.newBuilder().setKey(number).build());
+            if (number % 1000 == 0) logger.info("Result: {}", result);
             assert result.getResultType().equals(ResultType.SUCCESS);
         });
     }
