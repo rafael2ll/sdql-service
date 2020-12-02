@@ -21,6 +21,12 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
+/*
+=======================================================================================================================
+    Due to the nature of restoring state after a relaunch. To re-run the tests, always empty the folder database/data
+    and delete the version.db file.
+=======================================================================================================================
+ */
 public class ServerTest {
     private static final Logger logger = LoggerFactory.getLogger(ServerTest.class);
     private DatabaseServiceGrpc.DatabaseServiceBlockingStub blockingStub;
@@ -37,6 +43,7 @@ public class ServerTest {
         asyncStub = DatabaseServiceGrpc.newFutureStub(channel);
     }
 
+    // The two tests ahead perform the same operations so they can't be executed twice [only one, then only after database restore the other might be run].
     @Test
     void write_parallel_100000_with_multiple_clients_successful() {
         List<Client> managedChannelCircular = IntStream.range(0, 5).mapToObj(i -> new Client(i, ManagedChannelBuilder.forAddress("localhost", 8080)
