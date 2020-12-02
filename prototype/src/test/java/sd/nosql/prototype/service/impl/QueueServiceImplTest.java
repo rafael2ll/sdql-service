@@ -15,7 +15,18 @@ import java.util.stream.IntStream;
 
 /*
 ===================================================================================================
-            Before each test delete all the content inside the folder prototype/database
+            1. Firstly, create a folder inside module prototype, called database
+            2. Inside the database folder, create a folder called data
+            3. Now you're read to go
+            4.Before each test delete all the content inside the folder prototype/database and recreate the folder data
+
+  - Folder structure:
+   | -> prototype
+      |-> src
+      |-> database
+        |-> data
+          |-> ...backup files automatically created
+        |-> version.db // Also programmatically created
 ===================================================================================================
 */
 class QueueServiceImplTest {
