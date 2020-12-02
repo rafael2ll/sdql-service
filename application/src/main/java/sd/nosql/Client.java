@@ -1,5 +1,8 @@
 package sd.nosql;
 
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -13,16 +16,16 @@ import java.nio.charset.StandardCharsets;
 public class Client {
     private static final Logger logger = LoggerFactory.getLogger(Client.class);
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws InterruptedException {
         ManagedChannel channel = ManagedChannelBuilder.forAddress("localhost", 8080)
                 .usePlaintext()
                 .build();
 
         logger.info("Channel: {}", channel);
 
-        DatabaseServiceGrpc.DatabaseServiceBlockingStub stub = DatabaseServiceGrpc.newBlockingStub(channel);
+        DatabaseServiceGrpc.DatabaseServiceFutureStub stub = DatabaseServiceGrpc.newFutureStub(channel);
 
-        RecordResult resultInsert = stub.set(RecordInput.newBuilder()
+        stub.set(RecordInput.newBuilder()
                 .setKey(1606078612219L)
                 .setRecord(Record.newBuilder()
                         .setTimestamp(System.currentTimeMillis())
@@ -30,7 +33,7 @@ public class Client {
                         .build())
                 .build());
 
-        RecordResult resultUpdate = stub.testAndSet(
+        var last = stub.testAndSet(
                 RecordUpdate.newBuilder()
                         .setOldVersion(1)
                         .setKey(1606078612219L)
@@ -40,7 +43,23 @@ public class Client {
                                 .build())
                         .build());
 
-        logger.info("Updated Result: {}", resultUpdate);
+        last.addListener(()-> logger.info("Gotten"), MoreExecutors.directExecutor());
+        Futures.addCallback(last, new FutureCallback<>() {
+            @Override
+            public void onSuccess(RecordResult recordResult) {
+                    logger.info("Result: {}", recordResult);
+            }
+
+            @Override
+            public void onFailure(Throwable throwable) {
+
+            }
+        }, MoreExecutors.directExecutor());
+        while (true) {
+            if (last.isDone())
+                break;
+            Thread.sleep(100);
+        }
         logger.info("Current Record: {}", stub.get(Key.newBuilder().setKey(1606078612219L).build()));
         channel.shutdown();
     }

@@ -1,6 +1,9 @@
 package sd.nosql;
 
 
+import com.google.common.util.concurrent.FutureCallback;
+import com.google.common.util.concurrent.Futures;
+import com.google.common.util.concurrent.MoreExecutors;
 import com.google.protobuf.ByteString;
 import io.grpc.ManagedChannel;
 import io.grpc.ManagedChannelBuilder;
@@ -13,13 +16,21 @@ import sd.nosql.prototype.*;
 
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 import java.util.stream.LongStream;
 
+/*
+=======================================================================================================================
+    Due to the nature of restoring state after a relaunch. To re-run the tests, always empty the folder database/data
+    and delete the version.db file.
+=======================================================================================================================
+ */
 public class ServerTest {
     private static final Logger logger = LoggerFactory.getLogger(ServerTest.class);
-    private DatabaseServiceGrpc.DatabaseServiceBlockingStub stub;
+    private DatabaseServiceGrpc.DatabaseServiceBlockingStub blockingStub;
+    private DatabaseServiceGrpc.DatabaseServiceFutureStub asyncStub;
 
     @BeforeEach
     void init() {
@@ -28,9 +39,11 @@ public class ServerTest {
                 .build();
 
         logger.info("Channel: {}", channel);
-        stub = DatabaseServiceGrpc.newBlockingStub(channel);
+        blockingStub = DatabaseServiceGrpc.newBlockingStub(channel);
+        asyncStub = DatabaseServiceGrpc.newFutureStub(channel);
     }
 
+    // The two tests ahead perform the same operations so they can't be executed twice [only one, then only after database restore the other might be run].
     @Test
     void write_parallel_100000_with_multiple_clients_successful() {
         List<Client> managedChannelCircular = IntStream.range(0, 5).mapToObj(i -> new Client(i, ManagedChannelBuilder.forAddress("localhost", 8080)
@@ -55,7 +68,7 @@ public class ServerTest {
     @Test
     void write_parallel_100000_successful() {
         LongStream.range(0L, 100000L).parallel().forEach(number -> {
-            RecordResult resultInsert = stub.set(RecordInput.newBuilder()
+            RecordResult resultInsert = blockingStub.set(RecordInput.newBuilder()
                     .setKey(number)
                     .setRecord(Record.newBuilder()
                             .setTimestamp(System.currentTimeMillis())
@@ -67,9 +80,46 @@ public class ServerTest {
     }
 
     @Test
+    void write_parallel_100000_async_successful() throws InterruptedException {
+        AtomicInteger count = new AtomicInteger();
+        LongStream.range(0L, 100000L).parallel().forEach(number -> {
+            var asyncResult = asyncStub.set(RecordInput.newBuilder()
+                    .setKey(number)
+                    .setRecord(Record.newBuilder()
+                            .setTimestamp(System.currentTimeMillis())
+                            .setData(ByteString.copyFrom(String.format("{\"message\": \" To every dream that I left behind....counting\", \"time\": %d }", number), StandardCharsets.UTF_8))
+                            .build())
+                    .build());
+            Futures.addCallback(asyncResult, new FutureCallback<>() {
+                @Override
+                public void onSuccess(RecordResult recordResult) {
+                    count.getAndIncrement();
+                    assert recordResult.getResultType().equals(ResultType.SUCCESS);
+                }
+
+                @Override
+                public void onFailure(Throwable throwable) {
+                    count.getAndIncrement();
+                }
+            }, MoreExecutors.directExecutor());
+        });
+        while (count.get() < 100000) {
+            logger.info("Count: {}", count.get());
+            Thread.sleep(1000);
+        }
+    }
+
+    @Test
     void update_all_10000_in_sequence() {
         LongStream.range(0L, 100000L).parallel().forEach(number -> {
-            RecordResult result = stub.get(Key.newBuilder().setKey(number).build());
+            RecordResult result = blockingStub.testAndSet(RecordUpdate.newBuilder()
+                    .setOldVersion(1)
+                    .setKey(number)
+                    .setRecord(Record.newBuilder()
+                            .setTimestamp(System.currentTimeMillis())
+                            .setData(ByteString.copyFrom(String.format("{\"message\": \" To every dream that I left behind new version....counting\", \"time\": %d }", number), StandardCharsets.UTF_8))
+                            .build())
+                    .build());
             assert result.getResultType().equals(ResultType.SUCCESS);
         });
     }
@@ -77,7 +127,8 @@ public class ServerTest {
     @Test
     void read_all_10000_in_sequence() {
         LongStream.range(0L, 100000L).parallel().forEach(number -> {
-            RecordResult result = stub.get(Key.newBuilder().setKey(number).build());
+            RecordResult result = blockingStub.get(Key.newBuilder().setKey(number).build());
+            if (number % 1000 == 0) logger.info("Result: {}", result);
             assert result.getResultType().equals(ResultType.SUCCESS);
         });
     }
