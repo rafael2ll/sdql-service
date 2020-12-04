@@ -41,7 +41,7 @@ sudo apt-get update && sudo apt-get install \
 A partir dos requisitos instalados, basta executar os seguintes comandos:
 
 ```
-    docker-compose build && docker-compose up
+    mvn package && docker-compose build && docker-compose up
 ```
 
 Assim será inicializado o Servidor do nosso Banco NoSQL.
