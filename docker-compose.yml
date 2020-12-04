@@ -1,0 +1,11 @@
+version: '3'
+services:
+
+  grpc-server:
+    build:
+      context: .
+      dockerfile: Dockerfile-server
+    stdin_open: true
+    tty: true
+    expose:
+      - "8080"
