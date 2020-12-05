@@ -1,0 +1,9 @@
+FROM openjdk:14
+
+WORKDIR /usr/local
+
+COPY ./application/target/application-1.0-SNAPSHOT.jar /usr/local/
+COPY ./prototype/target/prototype-1.0-SNAPSHOT.jar /usr/local/
+RUN mkdir -p /usr/local/database
+RUN mkdir -p /usr/local/database/data
+ENTRYPOINT ["java","-cp","application-1.0-SNAPSHOT.jar","sd.nosql.Server"]
